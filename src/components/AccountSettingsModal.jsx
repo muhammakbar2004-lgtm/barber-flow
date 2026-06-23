@@ -399,15 +399,9 @@ export default function AccountSettingsModal({ onClose, userRole = 'admin' }) {
                             <span className="text-[9px] text-[#81756e] dark:text-[#faf3e0]/60 font-mono block truncate">
                               {acc.email}
                             </span>
-                            <select
-                              value={acc.tierLevel || 'Junior'}
-                              onChange={(e) => handleUpdateTierLevel(acc.id, e.target.value)}
-                              className="mt-1.5 bg-[#FAF6EE]/50 dark:bg-black/20 border border-[#E5D3C5]/80 dark:border-white/10 rounded px-1.5 py-0.5 text-[10px] text-[#26170C] dark:text-[#faf3e0] focus:outline-none"
-                            >
-                              <option value="Junior">Junior</option>
-                              <option value="Specialist">Specialist</option>
-                              <option value="Senior">Senior</option>
-                            </select>
+                            <span className="text-[10px] text-[#81756e] dark:text-[#faf3e0]/60 font-medium block mt-1">
+                              Tingkat: {acc.tierLevel || 'Junior'}
+                            </span>
                           </div>
                           {acc.canDelete && (
                             <button

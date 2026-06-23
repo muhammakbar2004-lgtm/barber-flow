@@ -171,6 +171,8 @@ export default function CustomerBookingPortal({ isAuthenticated, user, onLogout,
   const [activeBooking, setActiveBooking] = useState(null);
   const [peopleAhead, setPeopleAhead] = useState(0);
   const [bookedTimes, setBookedTimes] = useState([]);
+  const [openTime, setOpenTime] = useState('09:00');
+  const [closeTime, setCloseTime] = useState('17:30');
 
   // Fetch active booking and subscribe to updates
   useEffect(() => {
@@ -330,6 +332,29 @@ export default function CustomerBookingPortal({ isAuthenticated, user, onLogout,
       }
     };
     fetchBarbers();
+  }, []);
+
+  // Fetch store open/close hours from Supabase
+  useEffect(() => {
+    const fetchStoreHours = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('store_settings')
+          .select('open_time, close_time')
+          .eq('id', 'main_store')
+          .single();
+        if (!error && data) {
+          const fetchedOpen = data.open_time ? data.open_time.substring(0, 5) : '09:00';
+          const fetchedClose = data.close_time ? data.close_time.substring(0, 5) : '17:30';
+          setOpenTime(fetchedOpen);
+          setCloseTime(fetchedClose);
+          setBookingTime(fetchedOpen);
+        }
+      } catch (err) {
+        console.error('Error fetching store hours:', err);
+      }
+    };
+    fetchStoreHours();
   }, []);
 
   useEffect(() => {
@@ -523,6 +548,40 @@ export default function CustomerBookingPortal({ isAuthenticated, user, onLogout,
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTimeChange = (e) => {
+    const val = e.target.value;
+    if (!val) return;
+
+    // Bulatkan ke kelipatan 30 menit terdekat
+    const [h, m] = val.split(':').map(Number);
+    const totalMinutes = h * 60 + m;
+    const roundedMinutes = Math.round(totalMinutes / 30) * 30;
+    const newH = Math.floor(roundedMinutes / 60);
+    const newM = roundedMinutes % 60;
+    const finalH = newH >= 24 ? 0 : newH;
+    const formattedTime = `${String(finalH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+
+    // Validasi batas jam buka dan tutup
+    if (formattedTime < openTime) {
+      alert(`Mohon maaf, jam layanan belum buka. Jam buka: ${openTime}`);
+      setBookingTime(openTime);
+      return;
+    }
+    if (formattedTime > closeTime) {
+      alert(`Mohon maaf, jam layanan sudah tutup. Jam tutup: ${closeTime}`);
+      setBookingTime(closeTime);
+      return;
+    }
+
+    // Cek jika slot waktu tersebut sudah dipesan
+    if (bookedTimes.includes(formattedTime)) {
+      alert(`Waktu ${formattedTime} sudah dipesan. Silakan pilih waktu lain.`);
+      return;
+    }
+
+    setBookingTime(formattedTime);
   };
 
   const handleCheckout = async () => {
@@ -1322,20 +1381,15 @@ export default function CustomerBookingPortal({ isAuthenticated, user, onLogout,
                   {/* Jam */}
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] font-bold text-[#81756e] uppercase tracking-wider">Waktu Layanan</label>
-                    <select
+                    <input
+                      type="time"
                       value={bookingTime}
-                      onChange={(e) => setBookingTime(e.target.value)}
-                      className="w-full bg-white dark:bg-[#26170c]/50 border border-[#E5D3C5] dark:border-white/10 p-2.5 rounded-lg text-xs focus:ring-1 focus:ring-[#944925] focus:border-[#944925] outline-none text-[#26170C] dark:text-[#faf3e0] font-sans"
-                    >
-                      {['09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30'].map(t => {
-                        const isBooked = bookedTimes.includes(t);
-                        return (
-                          <option key={t} value={t} disabled={isBooked}>
-                            {t} {isBooked ? '(Sudah Dipesan)' : ''}
-                          </option>
-                        );
-                      })}
-                    </select>
+                      onChange={handleTimeChange}
+                      min={openTime}
+                      max={closeTime}
+                      step="1800"
+                      className="w-full bg-white dark:bg-[#26170c]/50 border border-[#E5D3C5] dark:border-white/10 p-2.5 rounded-lg text-xs focus:ring-1 focus:ring-[#944925] focus:border-[#944925] outline-none text-[#26170C] dark:text-[#faf3e0] font-sans cursor-pointer"
+                    />
                   </div>
 
                   {/* Barber */}

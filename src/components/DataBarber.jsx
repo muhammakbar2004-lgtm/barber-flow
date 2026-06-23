@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, Edit2, Star, Download, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { supabase } from '../supabaseClient';
 
 const initialReviews = [
   {
@@ -156,7 +157,89 @@ export default function DataBarber() {
   const prevMonth = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1));
   const nextMonth = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1));
 
-  const handleOpenEdit = (barber) => { setSelectedBarber(barber); setShowEditModal(true); };
+  const [editStatus, setEditStatus] = useState('Active');
+  const [editCommission, setEditCommission] = useState(10);
+  const [editTierLevel, setEditTierLevel] = useState('Junior');
+
+  const fetchBarbersFromSupabase = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'barber');
+
+      if (error) {
+        console.error('Gagal memuat profil barber dari Supabase:', error.message);
+        return;
+      }
+
+      if (data) {
+        setBarbersData(prevBarbers => {
+          const updatedBarbers = prevBarbers.map(b => {
+            const matchedProfile = data.find(p => {
+              const profileName = (p.full_name || p.username || '').toLowerCase();
+              return profileName === b.name.toLowerCase();
+            });
+
+            if (matchedProfile) {
+              const currentRole = b.role || '';
+              const prefix = currentRole.includes('•') ? currentRole.split('•')[0].trim() : 'Barber';
+              const tier = matchedProfile.tier_level || 'Junior';
+              return {
+                ...b,
+                id: matchedProfile.id,
+                tierLevel: tier,
+                role: `${prefix} • ${tier}`
+              };
+            }
+            return b;
+          });
+
+          const extraBarbers = data.filter(p => {
+            const profileName = (p.full_name || p.username || '').toLowerCase();
+            return !prevBarbers.some(b => b.name.toLowerCase() === profileName);
+          });
+
+          const extraMapped = extraBarbers.map((p, idx) => {
+            const initials = (p.full_name || p.username || 'B').substring(0, 2).toUpperCase();
+            const colors = [
+              'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
+              'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300',
+              'bg-pink-100 text-pink-800 dark:bg-pink-950/40 dark:text-pink-300'
+            ];
+            return {
+              id: p.id,
+              name: p.full_name || p.username || p.email.split('@')[0],
+              role: `Barber • ${p.tier_level || 'Junior'}`,
+              tierLevel: p.tier_level || 'Junior',
+              status: 'Active',
+              efficiency: 90,
+              commission: 10,
+              shift: '09:00 - 17:30',
+              initials: initials,
+              colorClass: colors[idx % colors.length]
+            };
+          });
+
+          return [...updatedBarbers, ...extraMapped];
+        });
+      }
+    } catch (err) {
+      console.error('Kesalahan saat fetch barber:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchBarbersFromSupabase();
+  }, []);
+
+  const handleOpenEdit = (barber) => { 
+    setSelectedBarber(barber); 
+    setEditStatus(barber.status || 'Active');
+    setEditCommission(parseInt(barber.commission || barber.komisi || 10));
+    setEditTierLevel(barber.tierLevel || 'Junior');
+    setShowEditModal(true); 
+  };
   const handleOpenHistory = (barber) => { setSelectedBarber(barber); setShowHistoryModal(true); };
   const handleCloseModal = () => { 
     setShowEditModal(false); 
@@ -164,6 +247,47 @@ export default function DataBarber() {
     setShowCalendarModal(false); 
     setSelectedBarber(null); 
     setViewDate(new Date(2024, 2, 1)); // Reset ke Maret 2024
+  };
+
+  const handleSaveChanges = async () => {
+    if (!selectedBarber) return;
+
+    setBarbersData(prev => prev.map(b => {
+      if (b.id === selectedBarber.id) {
+        const currentRole = b.role || '';
+        const prefix = currentRole.includes('•') ? currentRole.split('•')[0].trim() : 'Barber';
+        return {
+          ...b,
+          status: editStatus,
+          commission: editCommission,
+          tierLevel: editTierLevel,
+          role: `${prefix} • ${editTierLevel}`
+        };
+      }
+      return b;
+    }));
+
+    if (typeof selectedBarber.id === 'string' && selectedBarber.id.length > 10) {
+      try {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ tier_level: editTierLevel })
+          .eq('id', selectedBarber.id);
+
+        if (error) {
+          alert('Gagal memperbarui database: ' + error.message);
+        } else {
+          alert('Berhasil memperbarui data kapster.');
+        }
+      } catch (err) {
+        console.error('Error updating profiles:', err);
+        alert('Terjadi kesalahan saat menyimpan ke database.');
+      }
+    } else {
+      alert('Berhasil memperbarui data kapster (lokal).');
+    }
+
+    handleCloseModal();
   };
 
   const handleExport = () => {
@@ -675,19 +799,36 @@ export default function DataBarber() {
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 dark:text-[#faf3e0]/80 mb-1">Status</label>
-                <select className="w-full bg-white dark:bg-[#3d2b1f] border border-[#E5D3C5] dark:border-white/10 rounded-lg px-3 py-2 text-[#26170C] dark:text-[#faf3e0] focus:outline-none focus:ring-1 focus:ring-[#26170C]">
-                  <option>Active</option>
-                  <option>Break</option>
-                  <option>Off</option>
+                <select 
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                  className="w-full bg-white dark:bg-[#3d2b1f] border border-[#E5D3C5] dark:border-white/10 rounded-lg px-3 py-2 text-[#26170C] dark:text-[#faf3e0] focus:outline-none focus:ring-1 focus:ring-[#26170C]"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Break">Break</option>
+                  <option value="Off">Off</option>
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 dark:text-[#faf3e0]/80 mb-1">Komisi (%)</label>
                 <input 
                   type="number" 
-                  defaultValue={parseInt(selectedBarber.commission || selectedBarber.komisi || 0)} 
+                  value={editCommission}
+                  onChange={(e) => setEditCommission(parseInt(e.target.value) || 0)}
                   className="w-full bg-white dark:bg-[#3d2b1f] border border-[#E5D3C5] dark:border-white/10 rounded-lg px-3 py-2 text-[#26170C] dark:text-[#faf3e0] focus:outline-none focus:ring-1 focus:ring-[#26170C]" 
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-[#faf3e0]/80 mb-1">Tingkat Barber (Role)</label>
+                <select 
+                  value={editTierLevel}
+                  onChange={(e) => setEditTierLevel(e.target.value)}
+                  className="w-full bg-white dark:bg-[#3d2b1f] border border-[#E5D3C5] dark:border-white/10 rounded-lg px-3 py-2 text-[#26170C] dark:text-[#faf3e0] focus:outline-none focus:ring-1 focus:ring-[#26170C]"
+                >
+                  <option value="Junior">Junior</option>
+                  <option value="Specialist">Specialist</option>
+                  <option value="Senior">Senior</option>
+                </select>
               </div>
             </div>
             <div className="mt-6 flex justify-end gap-3">
@@ -698,7 +839,7 @@ export default function DataBarber() {
                 Batal
               </button>
               <button 
-                onClick={handleCloseModal} 
+                onClick={handleSaveChanges} 
                 className="px-4 py-2 bg-[#26170C] dark:bg-[#faf3e0] text-white dark:text-[#26170C] rounded-lg hover:bg-[#3d2514] dark:hover:bg-[#efe8d5]"
               >
                 Simpan Perubahan
